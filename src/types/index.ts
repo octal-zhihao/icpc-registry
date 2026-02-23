@@ -1,4 +1,5 @@
 export type RegistrationStatus = 'pending' | 'approved' | 'rejected';
+export type EmailSentStatus = 'pending' | 'sent' | 'failed';
 
 export interface Registration {
   id: string;
@@ -15,6 +16,8 @@ export interface Registration {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  email_sent_status: EmailSentStatus;
+  email_sent_at?: string;
 }
 
 export interface Attachment {

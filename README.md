@@ -1,57 +1,76 @@
-# React + TypeScript + Vite
+# Yunnan University ICPC Registration System
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern, serverless registration system for the ICPC (International Collegiate Programming Contest) campus selection contest at Yunnan University.
 
-Currently, two official plugins are available:
+## 🚀 Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Student Registration**: Streamlined form for students to submit personal info, resume, and attachments.
+- **Admin Dashboard**: Comprehensive management interface for reviewing registrations.
+- **Email Notifications**: Automated email notifications for approval/rejection results.
+- **Secure Authentication**: Powered by Supabase Auth with email verification.
+- **Role-Based Access**: Strict separation between student and admin privileges.
 
-## Expanding the ESLint configuration
+## 🛠 Tech Stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **Frontend**: React, TypeScript, Vite, Tailwind CSS
+- **Backend & Database**: Supabase (PostgreSQL, Auth, Storage)
+- **Email Service**: Resend (via Vercel Serverless Functions)
+- **Hosting**: Vercel
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
+## 📦 Getting Started
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Prerequisites
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- Node.js 18+
+- Supabase account
+- Resend account (for email functionality)
+- Vercel CLI (optional, for local API testing)
 
-export default tseslint.config({
-  extends: [
-    // other configs...
-    // Enable lint rules for React
-    reactX.configs['recommended-typescript'],
-    // Enable lint rules for React DOM
-    reactDom.configs.recommended,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/your-username/icpc-registry.git
+   cd icpc-registry
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Environment Setup**
+   Copy `.env.example` to `.env` and fill in your Supabase credentials:
+   ```bash
+   VITE_SUPABASE_URL=your_supabase_url
+   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+   RESEND_API_KEY=your_resend_api_key
+   ```
+
+4. **Database Migration**
+   Apply the SQL migrations found in `supabase/migrations` to your Supabase project using the SQL Editor or Supabase CLI.
+
+5. **Run Locally**
+   
+   To run the frontend only:
+   ```bash
+   npm run dev
+   ```
+   
+   To run with backend API functions (email service):
+   ```bash
+   npm run dev:vercel
+   ```
+
+## 🚢 Deployment
+
+This project is optimized for deployment on **Vercel**.
+
+1. Push your code to a Git repository.
+2. Import the project into Vercel.
+3. Add the environment variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `RESEND_API_KEY`) in the Vercel project settings.
+4. Deploy!
+
+## 📄 License
+
+MIT License

@@ -241,6 +241,10 @@ export function Register() {
   }
 
   if (submitted && registrationData) {
+    // Only show approved/rejected if email has been sent. Otherwise show pending.
+    const isPublicStatusVisible = registrationData.email_sent_status === 'sent';
+    const displayStatus = isPublicStatusVisible ? registrationData.status : 'pending';
+
     return (
       <Card className="max-w-3xl mx-auto mt-8">
         <CardContent className="pt-6 space-y-6">
@@ -255,15 +259,16 @@ export function Register() {
               您的报名信息已收到，我们将尽快进行审核。
             </p>
             <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                registrationData.status === 'approved' ? 'bg-green-100 text-green-800' :
-                registrationData.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                displayStatus === 'approved' ? 'bg-green-100 text-green-800' :
+                displayStatus === 'rejected' ? 'bg-red-100 text-red-800' :
                 'bg-yellow-100 text-yellow-800'
             }`}>
                 当前状态：
-                {registrationData.status === 'approved' ? '已通过' :
-                 registrationData.status === 'rejected' ? '已拒绝' : '待审核'}
+                {displayStatus === 'approved' ? '已通过' :
+                 displayStatus === 'rejected' ? '已拒绝' : '待审核'}
             </div>
-            {registrationData.review_note && (
+            {/* Show review note only if public status is visible */}
+            {isPublicStatusVisible && registrationData.review_note && (
                 <div className="mt-4 p-4 bg-gray-50 rounded text-left">
                     <span className="font-semibold text-gray-700">审核备注：</span>
                     <p className="mt-1 text-gray-600">{registrationData.review_note}</p>

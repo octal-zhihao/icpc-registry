@@ -8,6 +8,15 @@ export default defineConfig({
   build: {
     sourcemap: 'hidden',
   },
+  server: {
+    // Remove proxy config as we can't easily run vercel dev and vite dev together in this environment
+    // proxy: {
+    //   '/api': {
+    //     target: 'http://localhost:3000', // Assuming Vercel dev runs on 3000
+    //     changeOrigin: true,
+    //   },
+    // },
+  },
   plugins: [
     react({
       babel: {

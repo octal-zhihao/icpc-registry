@@ -42,21 +42,6 @@ export function RegistrationDetailModal({
 
       if (error) throw error;
 
-      // Simulate sending email (in a real app, this would be an Edge Function)
-      try {
-          // call edge function or api
-          console.log(`Sending ${status} email to ${registration.email}`);
-          await supabase.from('email_logs').insert({
-              registration_id: registration.id,
-              template_type: status,
-              recipient_email: registration.email,
-              sent_success: true,
-              sent_at: new Date().toISOString()
-          })
-      } catch (e) {
-          console.error("Failed to log email", e)
-      }
-
       toast.success(status === 'approved' ? '已审核通过' : '已拒绝报名');
       onUpdate();
       onClose();
@@ -185,6 +170,20 @@ export function RegistrationDetailModal({
                 <div>
                     <Label className="text-gray-500">删除时间</Label>
                     <div className="font-medium text-red-500">{new Date(registration.deleted_at!).toLocaleString()}</div>
+                </div>
+            )}
+            {!isDeleted && (
+                <div>
+                    <Label className="text-gray-500">邮件通知状态</Label>
+                    <div className="font-medium">
+                        {registration.email_sent_status === 'sent' ? (
+                            <span className="text-green-600 flex items-center gap-1"><Check className="w-4 h-4" /> 已发送 ({new Date(registration.email_sent_at!).toLocaleString()})</span>
+                        ) : registration.email_sent_status === 'failed' ? (
+                            <span className="text-red-600 flex items-center gap-1"><AlertTriangle className="w-4 h-4" /> 发送失败</span>
+                        ) : (
+                            <span className="text-gray-500">未发送</span>
+                        )}
+                    </div>
                 </div>
             )}
           </div>
