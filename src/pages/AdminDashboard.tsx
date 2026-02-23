@@ -134,6 +134,9 @@ export function AdminDashboard() {
         for (const reg of pendingEmails) {
             const template = reg.status === 'approved' ? approvedTemplate : rejectedTemplate;
             
+            // Replace placeholders
+            const personalizedContent = template.content.replace('{{name}}', reg.name);
+
             try {
                 // Determine API URL based on environment
                 const apiUrl = import.meta.env.PROD 
@@ -149,7 +152,7 @@ export function AdminDashboard() {
                     body: JSON.stringify({
                         to: reg.email,
                         subject: template.subject,
-                        html: template.content,
+                        html: personalizedContent,
                     }),
                 });
 
