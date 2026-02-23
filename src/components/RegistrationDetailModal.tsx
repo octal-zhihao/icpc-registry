@@ -28,14 +28,17 @@ export function RegistrationDetailModal({
   if (!isOpen) return null;
 
   const handleReview = async (status: 'approved' | 'rejected') => {
+    if (isProcessing) return;
     setIsProcessing(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
       const { error } = await supabase
         .from('registrations')
         .update({
           status,
           review_note: reviewNote,
-          reviewed_by: (await supabase.auth.getUser()).data.user?.id,
+          reviewed_by: user?.id,
           updated_at: new Date().toISOString(),
         })
         .eq('id', registration.id);
@@ -43,12 +46,15 @@ export function RegistrationDetailModal({
       if (error) throw error;
 
       toast.success(status === 'approved' ? '已审核通过' : '已拒绝报名');
-      onUpdate();
+      
+      // Close first to prevent UI lock-up, then update list in background
       onClose();
+      onUpdate();
     } catch (error: any) {
       console.error('Review error:', error);
-      toast.error('审核操作失败');
+      toast.error('审核操作失败: ' + error.message);
     } finally {
+      // If we didn't close (error case), stop loading
       setIsProcessing(false);
     }
   };
@@ -64,8 +70,8 @@ export function RegistrationDetailModal({
         
         if (error) throw error;
         toast.success('已移入垃圾箱');
-        onUpdate();
         onClose();
+        onUpdate();
     } catch (error: any) {
         toast.error('操作失败: ' + error.message);
     } finally {
@@ -83,8 +89,8 @@ export function RegistrationDetailModal({
         
         if (error) throw error;
         toast.success('已恢复');
-        onUpdate();
         onClose();
+        onUpdate();
     } catch (error: any) {
         toast.error('操作失败: ' + error.message);
     } finally {
@@ -103,8 +109,8 @@ export function RegistrationDetailModal({
           
           if (error) throw error;
           toast.success('已永久删除');
-          onUpdate();
           onClose();
+          onUpdate();
       } catch (error: any) {
           toast.error('删除失败: ' + error.message);
       } finally {
@@ -119,7 +125,7 @@ export function RegistrationDetailModal({
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-white z-10">
           <h2 className="text-xl font-bold">报名详情 {isDeleted && <span className="text-red-500 text-sm ml-2">(已删除)</span>}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700" disabled={isProcessing}>
             <X className="h-6 w-6" />
           </button>
         </div>

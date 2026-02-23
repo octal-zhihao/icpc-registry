@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Registration, Attachment } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { RegistrationDetailModal } from '@/components/RegistrationDetailModal';
-import { Search, Filter, RefreshCcw, Mail, Loader2, Check, AlertTriangle } from 'lucide-react';
+import { Search, Filter, RefreshCcw, Mail, Loader2, Check, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+
+const PAGE_SIZE = 20;
 
 export function AdminDashboard() {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
@@ -19,6 +21,10 @@ export function AdminDashboard() {
   const [selectedAttachments, setSelectedAttachments] = useState<Attachment[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+
   // Email sending state
   const [isSendingEmails, setIsSendingEmails] = useState(false);
   const [emailProgress, setEmailProgress] = useState({ sent: 0, total: 0, failed: 0 });
@@ -29,18 +35,25 @@ export function AdminDashboard() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm);
+      setPage(1); // Reset page on search
     }, 500); // 500ms debounce
 
     return () => clearTimeout(timer);
   }, [searchTerm]);
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter]);
 
   const fetchRegistrations = useCallback(async () => {
     setLoading(true);
     try {
       let query = supabase
         .from('registrations')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
       if (statusFilter === 'trash') {
         query = query.not('deleted_at', 'is', null);
@@ -55,17 +68,20 @@ export function AdminDashboard() {
         query = query.or(`name.ilike.%${debouncedSearchTerm}%,college.ilike.%${debouncedSearchTerm}%`);
       }
 
-      const { data, error } = await query;
+      const { data, error, count } = await query;
 
       if (error) throw error;
+      
       setRegistrations(data || []);
+      setHasMore(count ? (page * PAGE_SIZE < count) : false);
+
     } catch (error) {
       console.error('Error fetching registrations:', error);
       toast.error('加载报名数据失败');
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchTerm, statusFilter]);
+  }, [debouncedSearchTerm, statusFilter, page]);
 
   useEffect(() => {
     fetchRegistrations();
@@ -73,10 +89,8 @@ export function AdminDashboard() {
 
   const handleViewDetails = async (registration: Registration) => {
     try {
-      // Don't set loading here to avoid full page re-render flicker
-      // Just open modal and let it load or pass empty first
       setSelectedRegistration(registration);
-      setSelectedAttachments([]); // Clear previous
+      setSelectedAttachments([]); 
       setIsModalOpen(true);
 
       const { data: attachments, error } = await supabase
@@ -94,29 +108,40 @@ export function AdminDashboard() {
   };
 
   const handleSendEmails = async () => {
-    // 1. Get all registrations that need emails (approved or rejected, and not yet sent)
-    const pendingEmails = registrations.filter(r => 
-        (r.status === 'approved' || r.status === 'rejected') && 
-        r.email_sent_status !== 'sent' &&
-        !r.deleted_at
-    );
-
-    if (pendingEmails.length === 0) {
-        toast.info('没有待发送邮件的记录');
-        return;
-    }
-
-    if (!confirm(`准备给 ${pendingEmails.length} 位用户发送审核结果邮件，确定继续吗？`)) {
-        return;
-    }
-
+    // Note: This only processes currently fetched records. 
+    // For production with pagination, this logic should likely be moved to a backend function 
+    // or we need to fetch ALL pending emails first.
+    // For now, let's fetch all pending emails explicitly for this action.
+    
     setIsSendingEmails(true);
-    // Initialize progress counters locally to track this batch
-    let successCount = 0;
-    let failCount = 0;
-    setEmailProgress({ sent: 0, total: pendingEmails.length, failed: 0 });
-
     try {
+        // 1. Fetch ALL pending emails (ignoring pagination)
+        const { data: allPending, error: fetchError } = await supabase
+            .from('registrations')
+            .select('*')
+            .in('status', ['approved', 'rejected'])
+            .neq('email_sent_status', 'sent')
+            .is('deleted_at', null);
+            
+        if (fetchError) throw fetchError;
+
+        const pendingEmails = allPending || [];
+
+        if (pendingEmails.length === 0) {
+            toast.info('没有待发送邮件的记录');
+            setIsSendingEmails(false);
+            return;
+        }
+
+        if (!confirm(`准备给 ${pendingEmails.length} 位用户发送审核结果邮件，确定继续吗？`)) {
+            setIsSendingEmails(false);
+            return;
+        }
+
+        let successCount = 0;
+        let failCount = 0;
+        setEmailProgress({ sent: 0, total: pendingEmails.length, failed: 0 });
+
         // Fetch templates
         const { data: templates, error: templatesError } = await supabase.from('email_templates').select('*');
         if (templatesError) throw templatesError;
@@ -128,27 +153,20 @@ export function AdminDashboard() {
             throw new Error('邮件模板未配置');
         }
 
-        // Get current operator ID
         const { data: { user } } = await supabase.auth.getUser();
 
         for (const reg of pendingEmails) {
             const template = reg.status === 'approved' ? approvedTemplate : rejectedTemplate;
-            
-            // Replace placeholders
             const personalizedContent = template.content.replace('{{name}}', reg.name);
 
             try {
-                // Determine API URL based on environment
                 const apiUrl = import.meta.env.PROD 
-                    ? '/api/send-email' // Vercel production
-                    : 'http://localhost:3000/api/send-email'; // Local Vercel Dev
+                    ? '/api/send-email'
+                    : 'http://localhost:3000/api/send-email';
 
-                // Call Vercel API Route (Proxy to Resend)
                 const response = await fetch(apiUrl, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         to: reg.email,
                         subject: template.subject,
@@ -158,18 +176,16 @@ export function AdminDashboard() {
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
-                    console.error('Email API Error:', errorData);
-                    throw new Error(errorData.error?.message || errorData.error || `HTTP ${response.status}`);
+                    throw new Error(errorData.error?.message || `HTTP ${response.status}`);
                 }
                 
-                // Update log and status
                 await supabase.from('email_logs').insert({
                     registration_id: reg.id,
                     template_type: reg.status,
                     recipient_email: reg.email,
                     sent_success: true,
                     sent_at: new Date().toISOString(),
-                    operator_id: user?.id // Record operator ID
+                    operator_id: user?.id
                 });
 
                 await supabase.from('registrations').update({
@@ -182,8 +198,6 @@ export function AdminDashboard() {
 
             } catch (error: any) {
                 console.error(`Failed to send to ${reg.email}`, error);
-                
-                // Record failure in logs too
                 await supabase.from('email_logs').insert({
                     registration_id: reg.id,
                     template_type: reg.status,
@@ -193,23 +207,21 @@ export function AdminDashboard() {
                     sent_at: new Date().toISOString(),
                     operator_id: user?.id
                 });
-
                 await supabase.from('registrations').update({
                     email_sent_status: 'failed'
                 }).eq('id', reg.id);
-                
                 failCount++;
                 setEmailProgress(prev => ({ ...prev, failed: prev.failed + 1 }));
             }
         }
         
         if (failCount > 0) {
-            toast.warning(`发送完成：${successCount} 成功，${failCount} 失败。请检查控制台了解详情。`);
+            toast.warning(`发送完成：${successCount} 成功，${failCount} 失败。`);
         } else {
             toast.success(`所有 ${successCount} 封邮件发送成功`);
         }
         
-        fetchRegistrations();
+        fetchRegistrations(); // Refresh list
 
     } catch (error: any) {
         console.error('Batch send error:', error);
@@ -227,8 +239,8 @@ export function AdminDashboard() {
             <Link to="/admin/email-templates">
                 <Button variant="outline">邮件模板设置</Button>
             </Link>
-            <Button onClick={fetchRegistrations} variant="outline" size="icon">
-                <RefreshCcw className="h-4 w-4" />
+            <Button onClick={fetchRegistrations} variant="outline" size="icon" disabled={loading}>
+                <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </Button>
             <Button 
                 onClick={handleSendEmails} 
@@ -292,7 +304,10 @@ export function AdminDashboard() {
                   {loading ? (
                     <tr>
                       <td colSpan={7} className="h-24 text-center">
-                        加载中...
+                        <div className="flex items-center justify-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            加载中...
+                        </div>
                       </td>
                     </tr>
                   ) : registrations.length === 0 ? (
@@ -347,6 +362,33 @@ export function AdminDashboard() {
                   )}
                 </tbody>
               </table>
+            </div>
+            
+            {/* Pagination Controls */}
+            <div className="flex items-center justify-between px-4 py-4 border-t">
+                <div className="text-sm text-gray-500">
+                    第 {page} 页
+                </div>
+                <div className="flex gap-2">
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                        disabled={page === 1 || loading}
+                    >
+                        <ChevronLeft className="h-4 w-4" />
+                        上一页
+                    </Button>
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => setPage(p => p + 1)}
+                        disabled={!hasMore || loading}
+                    >
+                        下一页
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                </div>
             </div>
           </div>
         </CardContent>
