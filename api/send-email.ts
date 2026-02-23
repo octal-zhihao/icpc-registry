@@ -1,64 +1,61 @@
 import { Resend } from 'resend';
 
-export const config = {
-  runtime: 'edge',
-};
+// 使用默认的 Node.js Runtime，而不是 Edge Runtime，以获得更好的兼容性
+// export const config = {
+//   runtime: 'edge',
+// };
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-export default async function handler(req: Request) {
+export default async function handler(req, res) {
+  // 处理 CORS
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      },
-    });
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const { to, subject, html } = await req.json();
+    const { to, subject, html } = req.body;
 
-    if (!to || !subject || !html) {
-      return new Response(JSON.stringify({ error: 'Missing required fields' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    if (!process.env.RESEND_API_KEY) {
+      console.error('RESEND_API_KEY is missing');
+      return res.status(500).json({ error: 'Server configuration error: Missing API Key' });
     }
 
+    if (!to || !subject || !html) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    console.log(`Attempting to send email to ${to} with subject "${subject}"`);
+
     const { data, error } = await resend.emails.send({
-      from: 'ICPC 校赛组委会 <onboarding@resend.dev>', // 注意：测试模式下只能用这个，或者您验证过的域名
+      from: 'Zhihao Zhou <noreply@octalzhihao.top>',
       to: [to],
       subject: subject,
       html: html,
     });
 
     if (error) {
-      return new Response(JSON.stringify({ error }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      console.error('Resend API Error:', error);
+      return res.status(400).json({ error: error.message || error });
     }
 
-    return new Response(JSON.stringify(data), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
-  } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    console.log('Email sent successfully:', data);
+    return res.status(200).json(data);
+  } catch (error) {
+    console.error('Internal Server Error:', error);
+    return res.status(500).json({ error: error.message });
   }
 }
