@@ -85,7 +85,7 @@ export function Register() {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: window.location.origin + '/register',
+          emailRedirectTo: window.location.href,
         },
       });
       if (error) throw error;
