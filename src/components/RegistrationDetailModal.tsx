@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Registration, Attachment } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Loader2, X, Check, FileText, Trash2, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Loader2, X, Check, FileText, Trash2, RotateCcw, AlertTriangle, Mail, Pencil, Save } from 'lucide-react';
 
 interface RegistrationDetailModalProps {
   registration: Registration;
@@ -24,6 +25,33 @@ export function RegistrationDetailModal({
 }: RegistrationDetailModalProps) {
   const [reviewNote, setReviewNote] = useState(registration.review_note || '');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  
+  // Edit Form State
+  const [editForm, setEditForm] = useState({
+      name: registration.name,
+      college: registration.college,
+      major: registration.major,
+      enrollment_year: registration.enrollment_year.toString(),
+      email: registration.email,
+      qq: registration.qq,
+      resume: registration.resume,
+  });
+
+  // Sync state when registration changes
+  useEffect(() => {
+      setEditForm({
+          name: registration.name,
+          college: registration.college,
+          major: registration.major,
+          enrollment_year: registration.enrollment_year.toString(),
+          email: registration.email,
+          qq: registration.qq,
+          resume: registration.resume,
+      });
+      setReviewNote(registration.review_note || '');
+      setIsEditing(false);
+  }, [registration]);
 
   if (!isOpen) return null;
 
@@ -47,16 +75,66 @@ export function RegistrationDetailModal({
 
       toast.success(status === 'approved' ? '已审核通过' : '已拒绝报名');
       
-      // Close first to prevent UI lock-up, then update list in background
       onClose();
       onUpdate();
     } catch (error: any) {
       console.error('Review error:', error);
       toast.error('审核操作失败: ' + error.message);
     } finally {
-      // If we didn't close (error case), stop loading
       setIsProcessing(false);
     }
+  };
+
+  const handleResetEmail = async () => {
+      if (!confirm('确定要重置邮件状态吗？这允许您再次向该用户发送通知邮件。')) return;
+      setIsProcessing(true);
+      try {
+          const { error } = await supabase
+              .from('registrations')
+              .update({ 
+                  email_sent_status: 'pending',
+                  email_sent_at: null 
+              })
+              .eq('id', registration.id);
+          
+          if (error) throw error;
+          toast.success('邮件状态已重置');
+          onClose();
+          onUpdate();
+      } catch (error: any) {
+          toast.error('重置失败: ' + error.message);
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  const handleSaveChanges = async () => {
+      setIsProcessing(true);
+      try {
+          const { error } = await supabase
+              .from('registrations')
+              .update({
+                  name: editForm.name,
+                  college: editForm.college,
+                  major: editForm.major,
+                  enrollment_year: parseInt(editForm.enrollment_year),
+                  email: editForm.email,
+                  qq: editForm.qq,
+                  resume: editForm.resume,
+                  updated_at: new Date().toISOString()
+              })
+              .eq('id', registration.id);
+
+          if (error) throw error;
+          toast.success('信息修改成功');
+          setIsEditing(false);
+          onUpdate(); // Ideally we should update local state too, but onUpdate fetches all again which is safe
+          // Don't close modal, let user see changes
+      } catch (error: any) {
+          toast.error('保存失败: ' + error.message);
+      } finally {
+          setIsProcessing(false);
+      }
   };
 
   const handleDelete = async () => {
@@ -119,54 +197,99 @@ export function RegistrationDetailModal({
   }
 
   const isDeleted = !!registration.deleted_at;
+  const isEmailSent = registration.email_sent_status === 'sent';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-white z-10">
-          <h2 className="text-xl font-bold">报名详情 {isDeleted && <span className="text-red-500 text-sm ml-2">(已删除)</span>}</h2>
+          <div className="flex items-center gap-2">
+              <h2 className="text-xl font-bold">报名详情 {isDeleted && <span className="text-red-500 text-sm ml-2">(已删除)</span>}</h2>
+              {!isDeleted && !isEditing && (
+                  <Button variant="ghost" size="sm" onClick={() => setIsEditing(true)}>
+                      <Pencil className="w-4 h-4 mr-1" /> 编辑
+                  </Button>
+              )}
+              {isEditing && (
+                  <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setIsEditing(false)} disabled={isProcessing}>
+                          取消
+                      </Button>
+                      <Button size="sm" onClick={handleSaveChanges} disabled={isProcessing}>
+                          {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+                          保存
+                      </Button>
+                  </div>
+              )}
+          </div>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700" disabled={isProcessing}>
             <X className="h-6 w-6" />
           </button>
         </div>
 
         <div className="p-6 space-y-8">
-          {/* Basic Info */}
+          {/* Basic Info Form */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <Label className="text-gray-500">姓名</Label>
-              <div className="font-medium text-lg">{registration.name}</div>
+              {isEditing ? (
+                  <Input value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} />
+              ) : (
+                  <div className="font-medium text-lg">{registration.name}</div>
+              )}
             </div>
             <div>
               <Label className="text-gray-500">状态</Label>
-              <div className={`font-medium inline-block px-2 py-1 rounded text-sm ${
-                registration.status === 'approved' ? 'bg-green-100 text-green-800' :
-                registration.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                'bg-yellow-100 text-yellow-800'
-              }`}>
-                {registration.status === 'approved' ? '已通过' :
-                 registration.status === 'rejected' ? '已拒绝' : '待审核'}
+              <div className="mt-1">
+                <span className={`inline-block px-2 py-1 rounded text-sm font-medium ${
+                    registration.status === 'approved' ? 'bg-green-100 text-green-800' :
+                    registration.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                    'bg-yellow-100 text-yellow-800'
+                }`}>
+                    {registration.status === 'approved' ? '已通过' :
+                    registration.status === 'rejected' ? '已拒绝' : '待审核'}
+                </span>
               </div>
             </div>
             <div>
               <Label className="text-gray-500">学院</Label>
-              <div className="font-medium">{registration.college}</div>
+              {isEditing ? (
+                  <Input value={editForm.college} onChange={e => setEditForm({...editForm, college: e.target.value})} />
+              ) : (
+                  <div className="font-medium">{registration.college}</div>
+              )}
             </div>
             <div>
               <Label className="text-gray-500">专业</Label>
-              <div className="font-medium">{registration.major}</div>
+              {isEditing ? (
+                  <Input value={editForm.major} onChange={e => setEditForm({...editForm, major: e.target.value})} />
+              ) : (
+                  <div className="font-medium">{registration.major}</div>
+              )}
             </div>
             <div>
               <Label className="text-gray-500">入学年份</Label>
-              <div className="font-medium">{registration.enrollment_year}</div>
+              {isEditing ? (
+                  <Input type="number" value={editForm.enrollment_year} onChange={e => setEditForm({...editForm, enrollment_year: e.target.value})} />
+              ) : (
+                  <div className="font-medium">{registration.enrollment_year}</div>
+              )}
             </div>
             <div>
               <Label className="text-gray-500">邮箱</Label>
-              <div className="font-medium">{registration.email}</div>
+              {isEditing ? (
+                  <Input value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})} />
+              ) : (
+                  <div className="font-medium">{registration.email}</div>
+              )}
             </div>
             <div>
               <Label className="text-gray-500">QQ</Label>
-              <div className="font-medium">{registration.qq}</div>
+              {isEditing ? (
+                  <Input value={editForm.qq} onChange={e => setEditForm({...editForm, qq: e.target.value})} />
+              ) : (
+                  <div className="font-medium">{registration.qq}</div>
+              )}
             </div>
             <div>
               <Label className="text-gray-500">提交时间</Label>
@@ -181,9 +304,14 @@ export function RegistrationDetailModal({
             {!isDeleted && (
                 <div>
                     <Label className="text-gray-500">邮件通知状态</Label>
-                    <div className="font-medium">
+                    <div className="font-medium flex items-center gap-2 mt-1">
                         {registration.email_sent_status === 'sent' ? (
-                            <span className="text-green-600 flex items-center gap-1"><Check className="w-4 h-4" /> 已发送 ({new Date(registration.email_sent_at!).toLocaleString()})</span>
+                            <>
+                                <span className="text-green-600 flex items-center gap-1"><Check className="w-4 h-4" /> 已发送 ({new Date(registration.email_sent_at!).toLocaleString()})</span>
+                                <Button variant="outline" size="sm" className="h-6 text-xs ml-2" onClick={handleResetEmail} disabled={isProcessing}>
+                                    <RotateCcw className="w-3 h-3 mr-1" /> 重置状态
+                                </Button>
+                            </>
                         ) : registration.email_sent_status === 'failed' ? (
                             <span className="text-red-600 flex items-center gap-1"><AlertTriangle className="w-4 h-4" /> 发送失败</span>
                         ) : (
@@ -197,9 +325,17 @@ export function RegistrationDetailModal({
           {/* Resume */}
           <div>
             <Label className="text-gray-500 mb-2 block">个人简历 / 竞赛经历</Label>
-            <div className="bg-gray-50 p-4 rounded-md whitespace-pre-wrap text-sm leading-relaxed border">
-              {registration.resume}
-            </div>
+            {isEditing ? (
+                <Textarea 
+                    className="min-h-[150px]" 
+                    value={editForm.resume} 
+                    onChange={e => setEditForm({...editForm, resume: e.target.value})} 
+                />
+            ) : (
+                <div className="bg-gray-50 p-4 rounded-md whitespace-pre-wrap text-sm leading-relaxed border">
+                    {registration.resume}
+                </div>
+            )}
           </div>
 
           {/* Attachments */}
@@ -254,39 +390,50 @@ export function RegistrationDetailModal({
                 </div>
             ) : (
                 <>
-                    <div className="space-y-2">
-                    <Label htmlFor="reviewNote">审核备注 (可选)</Label>
-                    <Textarea
-                        id="reviewNote"
-                        placeholder="填写拒绝理由或通过备注..."
-                        value={reviewNote}
-                        onChange={(e) => setReviewNote(e.target.value)}
-                    />
-                    </div>
-                    <div className="flex flex-wrap gap-4 justify-between">
-                        <div className="flex gap-4">
-                            <Button 
-                                onClick={() => handleReview('approved')} 
-                                disabled={isProcessing}
-                                className="bg-green-600 hover:bg-green-700"
-                            >
-                                {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
-                                通过审核
-                            </Button>
-                            <Button 
-                                onClick={() => handleReview('rejected')} 
-                                disabled={isProcessing}
-                                variant="destructive"
-                            >
-                                {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <X className="mr-2 h-4 w-4" />}
-                                拒绝报名
-                            </Button>
+                    {isEmailSent ? (
+                        <div className="bg-yellow-50 text-yellow-800 p-4 rounded-md flex items-center gap-2">
+                            <AlertTriangle className="w-5 h-5" />
+                            <div>
+                                邮件已发送，审核状态已锁定。如需修改结果，请先点击上方的“重置状态”按钮。
+                            </div>
                         </div>
-                        <Button onClick={handleDelete} disabled={isProcessing} variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50">
-                             <Trash2 className="mr-2 h-4 w-4" />
-                             移入垃圾箱
-                        </Button>
-                    </div>
+                    ) : (
+                        <>
+                            <div className="space-y-2">
+                            <Label htmlFor="reviewNote">审核备注 (可选)</Label>
+                            <Textarea
+                                id="reviewNote"
+                                placeholder="填写拒绝理由或通过备注..."
+                                value={reviewNote}
+                                onChange={(e) => setReviewNote(e.target.value)}
+                            />
+                            </div>
+                            <div className="flex flex-wrap gap-4 justify-between">
+                                <div className="flex gap-4">
+                                    <Button 
+                                        onClick={() => handleReview('approved')} 
+                                        disabled={isProcessing}
+                                        className="bg-green-600 hover:bg-green-700"
+                                    >
+                                        {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                                        通过审核
+                                    </Button>
+                                    <Button 
+                                        onClick={() => handleReview('rejected')} 
+                                        disabled={isProcessing}
+                                        variant="destructive"
+                                    >
+                                        {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <X className="mr-2 h-4 w-4" />}
+                                        拒绝报名
+                                    </Button>
+                                </div>
+                                <Button onClick={handleDelete} disabled={isProcessing} variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    移入垃圾箱
+                                </Button>
+                            </div>
+                        </>
+                    )}
                 </>
             )}
           </div>

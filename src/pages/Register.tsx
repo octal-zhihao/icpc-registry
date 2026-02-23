@@ -82,10 +82,14 @@ export function Register() {
     e.preventDefault();
     setIsAuthLoading(true);
     try {
+      const redirectTo = import.meta.env.PROD 
+        ? 'https://icpc-registry.vercel.app/register' 
+        : window.location.href;
+      
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: window.location.href,
+          emailRedirectTo: redirectTo,
         },
       });
       if (error) throw error;

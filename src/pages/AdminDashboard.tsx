@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { RegistrationDetailModal } from '@/components/RegistrationDetailModal';
-import { Search, Filter, RefreshCcw, Mail, Loader2, Check, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Filter, RefreshCcw, Mail, Loader2, Check, AlertTriangle, ChevronLeft, ChevronRight, Users, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -24,6 +24,13 @@ export function AdminDashboard() {
   // Pagination
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+
+  // Stats
+  const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
+
+  // Batch Selection
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
 
   // Email sending state
   const [isSendingEmails, setIsSendingEmails] = useState(false);
@@ -44,7 +51,21 @@ export function AdminDashboard() {
   // Reset page when filter changes
   useEffect(() => {
     setPage(1);
+    setSelectedIds([]); // Clear selection on filter change
   }, [statusFilter]);
+
+  const fetchStats = async () => {
+      const { data, error } = await supabase.from('registrations').select('status, deleted_at');
+      if (!error && data) {
+          const active = data.filter(r => !r.deleted_at);
+          setStats({
+              total: active.length,
+              pending: active.filter(r => r.status === 'pending').length,
+              approved: active.filter(r => r.status === 'approved').length,
+              rejected: active.filter(r => r.status === 'rejected').length,
+          });
+      }
+  };
 
   const fetchRegistrations = useCallback(async () => {
     setLoading(true);
@@ -74,6 +95,9 @@ export function AdminDashboard() {
       
       setRegistrations(data || []);
       setHasMore(count ? (page * PAGE_SIZE < count) : false);
+      
+      // Update stats as well
+      fetchStats();
 
     } catch (error) {
       console.error('Error fetching registrations:', error);
@@ -105,6 +129,49 @@ export function AdminDashboard() {
       console.error('Error fetching attachments:', error);
       toast.error('加载附件失败');
     }
+  };
+
+  // Batch Operations
+  const toggleSelectAll = () => {
+      if (selectedIds.length === registrations.length && registrations.length > 0) {
+          setSelectedIds([]);
+      } else {
+          setSelectedIds(registrations.map(r => r.id));
+      }
+  };
+
+  const toggleSelect = (id: string) => {
+      setSelectedIds(prev => 
+          prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+      );
+  };
+
+  const handleBatchReview = async (status: 'approved' | 'rejected') => {
+      if (!selectedIds.length) return;
+      if (!confirm(`确定要将选中的 ${selectedIds.length} 条记录标记为 ${status === 'approved' ? '已通过' : '已拒绝'} 吗？`)) return;
+
+      setIsBatchProcessing(true);
+      try {
+          const { data: { user } } = await supabase.auth.getUser();
+          const { error } = await supabase
+            .from('registrations')
+            .update({
+                status,
+                reviewed_by: user?.id,
+                updated_at: new Date().toISOString()
+            })
+            .in('id', selectedIds);
+
+          if (error) throw error;
+
+          toast.success('批量操作成功');
+          setSelectedIds([]);
+          fetchRegistrations();
+      } catch (error: any) {
+          toast.error('批量操作失败: ' + error.message);
+      } finally {
+          setIsBatchProcessing(false);
+      }
   };
 
   const handleSendEmails = async () => {
@@ -234,7 +301,15 @@ export function AdminDashboard() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <h1 className="text-3xl font-bold tracking-tight">报名管理</h1>
+        <div>
+            <h1 className="text-3xl font-bold tracking-tight">报名管理</h1>
+            <div className="flex gap-4 mt-2 text-sm text-gray-500">
+                <span className="flex items-center gap-1"><Users className="w-4 h-4" /> 总数: {stats.total}</span>
+                <span className="flex items-center gap-1 text-yellow-600"><Clock className="w-4 h-4" /> 待审核: {stats.pending}</span>
+                <span className="flex items-center gap-1 text-green-600"><CheckCircle className="w-4 h-4" /> 已通过: {stats.approved}</span>
+                <span className="flex items-center gap-1 text-red-600"><XCircle className="w-4 h-4" /> 已拒绝: {stats.rejected}</span>
+            </div>
+        </div>
         <div className="flex gap-2">
             <Link to="/admin/email-templates">
                 <Button variant="outline">邮件模板设置</Button>
@@ -269,6 +344,33 @@ export function AdminDashboard() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+            
+            {selectedIds.length > 0 && (
+                <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-md animate-in fade-in">
+                    <span className="text-sm font-medium text-blue-700">已选 {selectedIds.length} 项</span>
+                    <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="h-8 bg-white text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+                        onClick={() => handleBatchReview('approved')}
+                        disabled={isBatchProcessing}
+                    >
+                        {isBatchProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3 mr-1" />}
+                        通过
+                    </Button>
+                    <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="h-8 bg-white text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                        onClick={() => handleBatchReview('rejected')}
+                        disabled={isBatchProcessing}
+                    >
+                        {isBatchProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <XCircle className="w-3 h-3 mr-1" />}
+                        拒绝
+                    </Button>
+                </div>
+            )}
+
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-gray-500" />
               <select
@@ -291,6 +393,14 @@ export function AdminDashboard() {
               <table className="w-full caption-bottom text-sm">
                 <thead className="[&_tr]:border-b">
                   <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                    <th className="h-12 px-4 w-10 text-center align-middle">
+                        <input 
+                            type="checkbox" 
+                            className="rounded border-gray-300"
+                            checked={registrations.length > 0 && selectedIds.length === registrations.length}
+                            onChange={toggleSelectAll}
+                        />
+                    </th>
                     <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">姓名</th>
                     <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">学院 / 专业</th>
                     <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">入学年份</th>
@@ -303,7 +413,7 @@ export function AdminDashboard() {
                 <tbody className="[&_tr:last-child]:border-0">
                   {loading ? (
                     <tr>
-                      <td colSpan={7} className="h-24 text-center">
+                      <td colSpan={8} className="h-24 text-center">
                         <div className="flex items-center justify-center gap-2">
                             <Loader2 className="h-4 w-4 animate-spin" />
                             加载中...
@@ -312,13 +422,21 @@ export function AdminDashboard() {
                     </tr>
                   ) : registrations.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="h-24 text-center text-gray-500">
+                      <td colSpan={8} className="h-24 text-center text-gray-500">
                         暂无报名记录
                       </td>
                     </tr>
                   ) : (
                     registrations.map((reg) => (
                       <tr key={reg.id} className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                        <td className="p-4 w-10 text-center align-middle">
+                            <input 
+                                type="checkbox" 
+                                className="rounded border-gray-300"
+                                checked={selectedIds.includes(reg.id)}
+                                onChange={() => toggleSelect(reg.id)}
+                            />
+                        </td>
                         <td className="p-4 align-middle font-medium">{reg.name}</td>
                         <td className="p-4 align-middle">
                           <div>{reg.college}</div>
