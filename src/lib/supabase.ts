@@ -7,4 +7,22 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Supabase URL or Anon Key is missing. Please check your .env file.');
 }
 
-export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');
+export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+  global: {
+    headers: {
+      'x-client-info': 'icpc-registry',
+    },
+  },
+  db: {
+    schema: 'public',
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
+});

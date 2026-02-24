@@ -12,9 +12,11 @@ import { toast } from 'sonner';
 import { Loader2, Upload, X, LogIn, FileText } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { Registration, Attachment } from '@/types';
+import { withTimeout } from '@/lib/api-helpers';
 
 const formSchema = z.object({
   name: z.string().min(2, '姓名至少2个字符'),
+  student_id: z.string().min(5, '请输入有效的学号'),
   major: z.string().min(2, '专业至少2个字符'),
   college: z.string().min(2, '学院至少2个字符'),
   enrollment_year: z.string().refine((val) => !isNaN(parseInt(val)) && parseInt(val) > 2000, {
@@ -52,27 +54,40 @@ export function Register() {
     resolver: zodResolver(formSchema),
   });
 
-  // Pre-fill email if user is logged in (though we don't display it in form anymore, we might need it)
   useEffect(() => {
-      // Check if user has already registered
       const checkRegistration = async () => {
           if (!user) return;
-          
-          const { data } = await supabase
-            .from('registrations')
-            .select('*')
-            .eq('user_id', user.id)
-            .single();
-            
-          if (data) {
-              setSubmitted(true);
-              setRegistrationData(data as Registration);
 
-              const { data: att } = await supabase
-                .from('attachments')
-                .select('*')
-                .eq('registration_id', data.id);
-              setUploadedAttachments(att || []);
+          try {
+              const { data, error } = await withTimeout(
+                  supabase
+                    .from('registrations')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .maybeSingle(),
+                  10000
+              );
+
+              if (error) throw error;
+
+              if (data) {
+                  setSubmitted(true);
+                  setRegistrationData(data as Registration);
+
+                  const { data: att, error: attError } = await withTimeout(
+                      supabase
+                        .from('attachments')
+                        .select('*')
+                        .eq('registration_id', data.id),
+                      10000
+                  );
+
+                  if (attError) throw attError;
+                  setUploadedAttachments(att || []);
+              }
+          } catch (error: any) {
+              console.error('Error checking registration:', error);
+              toast.error('加载报名信息失败: ' + (error.message || '未知错误'));
           }
       }
       checkRegistration();
@@ -82,16 +97,20 @@ export function Register() {
     e.preventDefault();
     setIsAuthLoading(true);
     try {
-      const redirectTo = import.meta.env.PROD 
-        ? 'https://icpc-registry.vercel.app/register' 
+      const redirectTo = import.meta.env.PROD
+        ? 'https://icpc-registry.vercel.app/register'
         : window.location.href;
-      
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: redirectTo,
-        },
-      });
+
+      const { error } = await withTimeout(
+        supabase.auth.signInWithOtp({
+          email,
+          options: {
+            emailRedirectTo: redirectTo,
+          },
+        }),
+        15000
+      );
+
       if (error) throw error;
       setAuthSent(true);
       toast.success('验证邮件已发送，请查收邮箱并点击链接登录');
@@ -129,56 +148,87 @@ export function Register() {
     setIsSubmitting(true);
     try {
       // 1. Create registration record
-      const { data: registration, error: regError } = await supabase
-        .from('registrations')
-        .insert({
-          user_id: user.id, // Link to authenticated user
-          name: data.name,
-          major: data.major,
-          college: data.college,
-          enrollment_year: parseInt(data.enrollment_year),
-          email: user.email!, // Use authenticated email
-          qq: data.qq,
-          resume: data.resume,
-          status: 'pending',
-        })
-        .select()
-        .single();
+      const { data: registration, error: regError } = await withTimeout(
+        supabase
+          .from('registrations')
+          .insert({
+            user_id: user.id,
+            name: data.name,
+            student_id: data.student_id,
+            major: data.major,
+            college: data.college,
+            enrollment_year: parseInt(data.enrollment_year),
+            email: user.email!,
+            qq: data.qq,
+            resume: data.resume,
+            status: 'pending',
+          })
+          .select()
+          .single(),
+        15000
+      );
 
       if (regError) throw regError;
 
       // 2. Upload files if any
+      const uploadedAttachments: Attachment[] = [];
       if (files.length > 0 && registration) {
-        const uploadPromises = files.map(async (file) => {
-          const fileExt = file.name.split('.').pop();
-          const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
-          const filePath = `${registration.id}/${fileName}`;
+        let successCount = 0;
+        let failCount = 0;
 
-          const { error: uploadError } = await supabase.storage
-            .from('registration-attachments')
-            .upload(filePath, file);
+        for (const file of files) {
+          try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
+            const filePath = `${registration.id}/${fileName}`;
 
-          if (uploadError) throw uploadError;
+            const { error: uploadError } = await withTimeout(
+              supabase.storage
+                .from('registration-attachments')
+                .upload(filePath, file),
+              30000 // 30s per file
+            );
 
-          const { data: { publicUrl } } = supabase.storage
-            .from('registration-attachments')
-            .getPublicUrl(filePath);
+            if (uploadError) throw uploadError;
 
-          return supabase.from('attachments').insert({
-            registration_id: registration.id,
-            file_name: file.name,
-            file_path: filePath,
-            file_url: publicUrl,
-          });
-        });
+            const { data: { publicUrl } } = supabase.storage
+              .from('registration-attachments')
+              .getPublicUrl(filePath);
 
-        await Promise.all(uploadPromises);
+            const { data: attachmentData, error: attachmentError } = await withTimeout(
+              supabase.from('attachments').insert({
+                registration_id: registration.id,
+                file_name: file.name,
+                file_path: filePath,
+                file_url: publicUrl,
+              }).select().single(),
+              10000
+            );
+
+            if (attachmentError) throw attachmentError;
+
+            if (attachmentData) {
+              uploadedAttachments.push(attachmentData as Attachment);
+            }
+            successCount++;
+          } catch (error) {
+            console.error(`Failed to upload ${file.name}:`, error);
+            failCount++;
+          }
+        }
+
+        if (failCount > 0) {
+          toast.warning(`报名已提交，但 ${failCount} 个附件上传失败`);
+        }
       }
 
+      // Update local state instead of reloading
       setSubmitted(true);
+      setRegistrationData(registration as Registration);
+      setUploadedAttachments(uploadedAttachments);
       toast.success('报名提交成功！');
-      // Reload page or re-fetch to get the full view
-      window.location.reload(); 
+      reset();
+      setFiles([]);
     } catch (error: any) {
       console.error('Submission error:', error);
       toast.error(error.message || '提交失败，请重试');
@@ -288,6 +338,10 @@ export function Register() {
                       <span className="font-medium">{registrationData.name}</span>
                   </div>
                   <div>
+                      <span className="text-gray-500 block">学号</span>
+                      <span className="font-medium">{registrationData.student_id}</span>
+                  </div>
+                  <div>
                       <span className="text-gray-500 block">学院</span>
                       <span className="font-medium">{registrationData.college}</span>
                   </div>
@@ -372,7 +426,13 @@ export function Register() {
                 <Input id="name" {...register('name')} placeholder="请输入姓名" />
                 {errors.name && <p className="text-sm text-red-500">{errors.name.message}</p>}
               </div>
-              
+
+              <div className="space-y-2">
+                <Label htmlFor="student_id">学号 *</Label>
+                <Input id="student_id" {...register('student_id')} placeholder="请输入学号" />
+                {errors.student_id && <p className="text-sm text-red-500">{errors.student_id.message}</p>}
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="enrollment_year">入学年份 *</Label>
                 <Input id="enrollment_year" type="number" {...register('enrollment_year')} placeholder="例如：2023" />

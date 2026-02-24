@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Registration, Attachment } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { RegistrationDetailModal } from '@/components/RegistrationDetailModal';
 import { Search, Filter, RefreshCcw, Mail, Loader2, Check, AlertTriangle, ChevronLeft, ChevronRight, Users, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import { batchProcess, fetchWithTimeout, withTimeout } from '@/lib/api-helpers';
 
 const PAGE_SIZE = 20;
 
@@ -16,7 +17,7 @@ export function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  
+
   const [selectedRegistration, setSelectedRegistration] = useState<Registration | null>(null);
   const [selectedAttachments, setSelectedAttachments] = useState<Attachment[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -36,6 +37,9 @@ export function AdminDashboard() {
   const [isSendingEmails, setIsSendingEmails] = useState(false);
   const [emailProgress, setEmailProgress] = useState({ sent: 0, total: 0, failed: 0 });
 
+  // Abort controller for cancelling requests
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   // Debounce search term
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
   
@@ -54,20 +58,32 @@ export function AdminDashboard() {
     setSelectedIds([]); // Clear selection on filter change
   }, [statusFilter]);
 
-  const fetchStats = async () => {
-      const { data, error } = await supabase.from('registrations').select('status, deleted_at');
-      if (!error && data) {
-          const active = data.filter(r => !r.deleted_at);
-          setStats({
-              total: active.length,
-              pending: active.filter(r => r.status === 'pending').length,
-              approved: active.filter(r => r.status === 'approved').length,
-              rejected: active.filter(r => r.status === 'rejected').length,
-          });
+  const fetchStats = useCallback(async () => {
+      try {
+          const { data, error } = await withTimeout(
+              supabase.from('registrations').select('status, deleted_at'),
+              10000
+          );
+          if (!error && data) {
+              const active = data.filter(r => !r.deleted_at);
+              setStats({
+                  total: active.length,
+                  pending: active.filter(r => r.status === 'pending').length,
+                  approved: active.filter(r => r.status === 'approved').length,
+                  rejected: active.filter(r => r.status === 'rejected').length,
+              });
+          }
+      } catch (error) {
+          console.error('Error fetching stats:', error);
       }
-  };
+  }, []);
 
   const fetchRegistrations = useCallback(async () => {
+    // Cancel previous request if any
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
     setLoading(true);
     try {
       let query = supabase
@@ -86,22 +102,21 @@ export function AdminDashboard() {
       }
 
       if (debouncedSearchTerm) {
-        query = query.or(`name.ilike.%${debouncedSearchTerm}%,college.ilike.%${debouncedSearchTerm}%`);
+        query = query.or(`name.ilike.%${debouncedSearchTerm}%,student_id.ilike.%${debouncedSearchTerm}%,college.ilike.%${debouncedSearchTerm}%`);
       }
 
-      const { data, error, count } = await query;
+      const { data, error, count } = await withTimeout(query, 15000);
 
       if (error) throw error;
-      
+
       setRegistrations(data || []);
       setHasMore(count ? (page * PAGE_SIZE < count) : false);
-      
-      // Update stats as well
-      fetchStats();
 
-    } catch (error) {
-      console.error('Error fetching registrations:', error);
-      toast.error('加载报名数据失败');
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.error('Error fetching registrations:', error);
+        toast.error('加载报名数据失败: ' + (error.message || '未知错误'));
+      }
     } finally {
       setLoading(false);
     }
@@ -111,23 +126,31 @@ export function AdminDashboard() {
     fetchRegistrations();
   }, [fetchRegistrations]);
 
+  // Fetch stats only on mount
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
   const handleViewDetails = async (registration: Registration) => {
     try {
       setSelectedRegistration(registration);
-      setSelectedAttachments([]); 
+      setSelectedAttachments([]);
       setIsModalOpen(true);
 
-      const { data: attachments, error } = await supabase
-        .from('attachments')
-        .select('*')
-        .eq('registration_id', registration.id);
-      
+      const { data: attachments, error } = await withTimeout(
+        supabase
+          .from('attachments')
+          .select('*')
+          .eq('registration_id', registration.id),
+        10000
+      );
+
       if (error) throw error;
-      
+
       setSelectedAttachments(attachments || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching attachments:', error);
-      toast.error('加载附件失败');
+      toast.error('加载附件失败: ' + (error.message || '未知错误'));
     }
   };
 
@@ -153,43 +176,45 @@ export function AdminDashboard() {
       setIsBatchProcessing(true);
       try {
           const { data: { user } } = await supabase.auth.getUser();
-          const { error } = await supabase
-            .from('registrations')
-            .update({
-                status,
-                reviewed_by: user?.id,
-                updated_at: new Date().toISOString()
-            })
-            .in('id', selectedIds);
+          const { error } = await withTimeout(
+              supabase
+                .from('registrations')
+                .update({
+                    status,
+                    reviewed_by: user?.id,
+                    updated_at: new Date().toISOString()
+                })
+                .in('id', selectedIds),
+              15000
+          );
 
           if (error) throw error;
 
           toast.success('批量操作成功');
           setSelectedIds([]);
           fetchRegistrations();
+          fetchStats(); // Update stats after batch operation
       } catch (error: any) {
-          toast.error('批量操作失败: ' + error.message);
+          toast.error('批量操作失败: ' + (error.message || '未知错误'));
       } finally {
           setIsBatchProcessing(false);
       }
   };
 
   const handleSendEmails = async () => {
-    // Note: This only processes currently fetched records. 
-    // For production with pagination, this logic should likely be moved to a backend function 
-    // or we need to fetch ALL pending emails first.
-    // For now, let's fetch all pending emails explicitly for this action.
-    
     setIsSendingEmails(true);
     try {
-        // 1. Fetch ALL pending emails (ignoring pagination)
-        const { data: allPending, error: fetchError } = await supabase
-            .from('registrations')
-            .select('*')
-            .in('status', ['approved', 'rejected'])
-            .neq('email_sent_status', 'sent')
-            .is('deleted_at', null);
-            
+        // 1. Fetch ALL pending emails with timeout
+        const { data: allPending, error: fetchError } = await withTimeout(
+            supabase
+                .from('registrations')
+                .select('*')
+                .in('status', ['approved', 'rejected'])
+                .neq('email_sent_status', 'sent')
+                .is('deleted_at', null),
+            15000 // 15s timeout
+        );
+
         if (fetchError) throw fetchError;
 
         const pendingEmails = allPending || [];
@@ -205,12 +230,13 @@ export function AdminDashboard() {
             return;
         }
 
-        let successCount = 0;
-        let failCount = 0;
         setEmailProgress({ sent: 0, total: pendingEmails.length, failed: 0 });
 
-        // Fetch templates
-        const { data: templates, error: templatesError } = await supabase.from('email_templates').select('*');
+        // Fetch templates with timeout
+        const { data: templates, error: templatesError } = await withTimeout(
+            supabase.from('email_templates').select('*'),
+            10000
+        );
         if (templatesError) throw templatesError;
 
         const approvedTemplate = templates?.find(t => t.template_type === 'approved');
@@ -222,30 +248,38 @@ export function AdminDashboard() {
 
         const { data: { user } } = await supabase.auth.getUser();
 
-        for (const reg of pendingEmails) {
-            const template = reg.status === 'approved' ? approvedTemplate : rejectedTemplate;
-            const personalizedContent = template.content.replace('{{name}}', reg.name);
+        // Use batch processing with concurrency control (5 emails at a time)
+        const { results, errors } = await batchProcess(
+            pendingEmails,
+            async (reg) => {
+                const template = reg.status === 'approved' ? approvedTemplate : rejectedTemplate;
+                const personalizedContent = template.content.replace('{{name}}', reg.name);
 
-            try {
-                const apiUrl = import.meta.env.PROD 
+                const apiUrl = import.meta.env.PROD
                     ? '/api/send-email'
                     : 'http://localhost:3000/api/send-email';
 
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        to: reg.email,
-                        subject: template.subject,
-                        html: personalizedContent,
-                    }),
-                });
+                // Send email with timeout (30s per email)
+                const response = await fetchWithTimeout(
+                    apiUrl,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            to: reg.email,
+                            subject: template.subject,
+                            html: personalizedContent,
+                        }),
+                    },
+                    30000
+                );
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
                     throw new Error(errorData.error?.message || `HTTP ${response.status}`);
                 }
-                
+
+                // Log success
                 await supabase.from('email_logs').insert({
                     registration_id: reg.id,
                     template_type: reg.status,
@@ -255,16 +289,28 @@ export function AdminDashboard() {
                     operator_id: user?.id
                 });
 
+                // Update registration status
                 await supabase.from('registrations').update({
                     email_sent_status: 'sent',
                     email_sent_at: new Date().toISOString()
                 }).eq('id', reg.id);
 
-                successCount++;
-                setEmailProgress(prev => ({ ...prev, sent: prev.sent + 1 }));
+                return { success: true, email: reg.email };
+            },
+            {
+                concurrency: 5, // Process 5 emails at a time
+                onProgress: (completed, total, failed) => {
+                    setEmailProgress({ sent: completed, total, failed });
+                }
+            }
+        );
 
-            } catch (error: any) {
+        // Handle errors
+        if (errors.length > 0) {
+            for (const { index, error } of errors) {
+                const reg = pendingEmails[index];
                 console.error(`Failed to send to ${reg.email}`, error);
+
                 await supabase.from('email_logs').insert({
                     registration_id: reg.id,
                     template_type: reg.status,
@@ -274,21 +320,23 @@ export function AdminDashboard() {
                     sent_at: new Date().toISOString(),
                     operator_id: user?.id
                 });
+
                 await supabase.from('registrations').update({
                     email_sent_status: 'failed'
                 }).eq('id', reg.id);
-                failCount++;
-                setEmailProgress(prev => ({ ...prev, failed: prev.failed + 1 }));
             }
         }
-        
+
+        const successCount = results.filter(r => r !== null).length;
+        const failCount = errors.length;
+
         if (failCount > 0) {
             toast.warning(`发送完成：${successCount} 成功，${failCount} 失败。`);
         } else {
             toast.success(`所有 ${successCount} 封邮件发送成功`);
         }
-        
-        fetchRegistrations(); // Refresh list
+
+        fetchRegistrations();
 
     } catch (error: any) {
         console.error('Batch send error:', error);
@@ -338,7 +386,7 @@ export function AdminDashboard() {
             <div className="relative w-full md:w-96">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
               <Input
-                placeholder="搜索姓名、学院..."
+                placeholder="搜索姓名、学号、学院..."
                 className="pl-9"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -402,6 +450,7 @@ export function AdminDashboard() {
                         />
                     </th>
                     <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">姓名</th>
+                    <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">学号</th>
                     <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">学院 / 专业</th>
                     <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">入学年份</th>
                     <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">联系方式</th>
@@ -413,7 +462,7 @@ export function AdminDashboard() {
                 <tbody className="[&_tr:last-child]:border-0">
                   {loading ? (
                     <tr>
-                      <td colSpan={8} className="h-24 text-center">
+                      <td colSpan={9} className="h-24 text-center">
                         <div className="flex items-center justify-center gap-2">
                             <Loader2 className="h-4 w-4 animate-spin" />
                             加载中...
@@ -422,7 +471,7 @@ export function AdminDashboard() {
                     </tr>
                   ) : registrations.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="h-24 text-center text-gray-500">
+                      <td colSpan={9} className="h-24 text-center text-gray-500">
                         暂无报名记录
                       </td>
                     </tr>
@@ -438,6 +487,7 @@ export function AdminDashboard() {
                             />
                         </td>
                         <td className="p-4 align-middle font-medium">{reg.name}</td>
+                        <td className="p-4 align-middle text-gray-600">{reg.student_id}</td>
                         <td className="p-4 align-middle">
                           <div>{reg.college}</div>
                           <div className="text-xs text-gray-500">{reg.major}</div>

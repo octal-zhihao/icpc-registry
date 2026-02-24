@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import { User } from '@supabase/supabase-js';
+import { withTimeout } from '@/lib/api-helpers';
 
 interface AuthState {
   user: User | null;
@@ -16,18 +17,27 @@ export const useAuthStore = create<AuthState>((set) => ({
   loading: true,
   checkUser: async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await withTimeout(
+        supabase.auth.getSession(),
+        10000
+      );
       const user = session?.user ?? null;
       let isAdmin = false;
 
       if (user) {
-        // Check if user is in admin_users table
-        const { data } = await supabase
-            .from('admin_users')
-            .select('id')
-            .eq('id', user.id)
-            .single();
-        if (data) isAdmin = true;
+        try {
+          const { data } = await withTimeout(
+            supabase
+              .from('admin_users')
+              .select('id')
+              .eq('id', user.id)
+              .maybeSingle(),
+            10000
+          );
+          if (data) isAdmin = true;
+        } catch (error) {
+          console.error('Error checking admin status:', error);
+        }
       }
 
       set({ user, isAdmin, loading: false });
@@ -37,14 +47,21 @@ export const useAuthStore = create<AuthState>((set) => ({
         let isAdmin = false;
 
         if (user) {
-            const { data } = await supabase
+          try {
+            const { data } = await withTimeout(
+              supabase
                 .from('admin_users')
                 .select('id')
                 .eq('id', user.id)
-                .single();
+                .maybeSingle(),
+              10000
+            );
             if (data) isAdmin = true;
+          } catch (error) {
+            console.error('Error checking admin status:', error);
+          }
         }
-        
+
         set({ user, isAdmin });
       });
     } catch (error) {

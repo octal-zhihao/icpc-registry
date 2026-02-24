@@ -4,6 +4,7 @@ export type EmailSentStatus = 'pending' | 'sent' | 'failed';
 export interface Registration {
   id: string;
   name: string;
+  student_id: string;
   major: string;
   college: string;
   enrollment_year: number;

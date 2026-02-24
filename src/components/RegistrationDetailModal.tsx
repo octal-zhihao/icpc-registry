@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Loader2, X, Check, FileText, Trash2, RotateCcw, AlertTriangle, Mail, Pencil, Save } from 'lucide-react';
+import { withTimeout } from '@/lib/api-helpers';
 
 interface RegistrationDetailModalProps {
   registration: Registration;
@@ -30,6 +31,7 @@ export function RegistrationDetailModal({
   // Edit Form State
   const [editForm, setEditForm] = useState({
       name: registration.name,
+      student_id: registration.student_id,
       college: registration.college,
       major: registration.major,
       enrollment_year: registration.enrollment_year.toString(),
@@ -42,6 +44,7 @@ export function RegistrationDetailModal({
   useEffect(() => {
       setEditForm({
           name: registration.name,
+          student_id: registration.student_id,
           college: registration.college,
           major: registration.major,
           enrollment_year: registration.enrollment_year.toString(),
@@ -60,26 +63,29 @@ export function RegistrationDetailModal({
     setIsProcessing(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      
-      const { error } = await supabase
-        .from('registrations')
-        .update({
-          status,
-          review_note: reviewNote,
-          reviewed_by: user?.id,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', registration.id);
+
+      const { error } = await withTimeout(
+        supabase
+          .from('registrations')
+          .update({
+            status,
+            review_note: reviewNote,
+            reviewed_by: user?.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', registration.id),
+        10000
+      );
 
       if (error) throw error;
 
       toast.success(status === 'approved' ? '已审核通过' : '已拒绝报名');
-      
+
       onClose();
       onUpdate();
     } catch (error: any) {
       console.error('Review error:', error);
-      toast.error('审核操作失败: ' + error.message);
+      toast.error('审核操作失败: ' + (error.message || '未知错误'));
     } finally {
       setIsProcessing(false);
     }
@@ -89,20 +95,23 @@ export function RegistrationDetailModal({
       if (!confirm('确定要重置邮件状态吗？这允许您再次向该用户发送通知邮件。')) return;
       setIsProcessing(true);
       try {
-          const { error } = await supabase
-              .from('registrations')
-              .update({ 
-                  email_sent_status: 'pending',
-                  email_sent_at: null 
-              })
-              .eq('id', registration.id);
-          
+          const { error } = await withTimeout(
+              supabase
+                  .from('registrations')
+                  .update({
+                      email_sent_status: 'pending',
+                      email_sent_at: null
+                  })
+                  .eq('id', registration.id),
+              10000
+          );
+
           if (error) throw error;
           toast.success('邮件状态已重置');
           onClose();
           onUpdate();
       } catch (error: any) {
-          toast.error('重置失败: ' + error.message);
+          toast.error('重置失败: ' + (error.message || '未知错误'));
       } finally {
           setIsProcessing(false);
       }
@@ -111,27 +120,30 @@ export function RegistrationDetailModal({
   const handleSaveChanges = async () => {
       setIsProcessing(true);
       try {
-          const { error } = await supabase
-              .from('registrations')
-              .update({
-                  name: editForm.name,
-                  college: editForm.college,
-                  major: editForm.major,
-                  enrollment_year: parseInt(editForm.enrollment_year),
-                  email: editForm.email,
-                  qq: editForm.qq,
-                  resume: editForm.resume,
-                  updated_at: new Date().toISOString()
-              })
-              .eq('id', registration.id);
+          const { error } = await withTimeout(
+              supabase
+                  .from('registrations')
+                  .update({
+                      name: editForm.name,
+                      student_id: editForm.student_id,
+                      college: editForm.college,
+                      major: editForm.major,
+                      enrollment_year: parseInt(editForm.enrollment_year),
+                      email: editForm.email,
+                      qq: editForm.qq,
+                      resume: editForm.resume,
+                      updated_at: new Date().toISOString()
+                  })
+                  .eq('id', registration.id),
+              10000
+          );
 
           if (error) throw error;
           toast.success('信息修改成功');
           setIsEditing(false);
-          onUpdate(); // Ideally we should update local state too, but onUpdate fetches all again which is safe
-          // Don't close modal, let user see changes
+          onUpdate();
       } catch (error: any) {
-          toast.error('保存失败: ' + error.message);
+          toast.error('保存失败: ' + (error.message || '未知错误'));
       } finally {
           setIsProcessing(false);
       }
@@ -141,17 +153,20 @@ export function RegistrationDetailModal({
     if (!confirm('确定要将此报名移入垃圾箱吗？')) return;
     setIsProcessing(true);
     try {
-        const { error } = await supabase
-            .from('registrations')
-            .update({ deleted_at: new Date().toISOString() })
-            .eq('id', registration.id);
-        
+        const { error } = await withTimeout(
+            supabase
+                .from('registrations')
+                .update({ deleted_at: new Date().toISOString() })
+                .eq('id', registration.id),
+            10000
+        );
+
         if (error) throw error;
         toast.success('已移入垃圾箱');
         onClose();
         onUpdate();
     } catch (error: any) {
-        toast.error('操作失败: ' + error.message);
+        toast.error('操作失败: ' + (error.message || '未知错误'));
     } finally {
         setIsProcessing(false);
     }
@@ -160,17 +175,20 @@ export function RegistrationDetailModal({
   const handleRestore = async () => {
     setIsProcessing(true);
     try {
-        const { error } = await supabase
-            .from('registrations')
-            .update({ deleted_at: null })
-            .eq('id', registration.id);
-        
+        const { error } = await withTimeout(
+            supabase
+                .from('registrations')
+                .update({ deleted_at: null })
+                .eq('id', registration.id),
+            10000
+        );
+
         if (error) throw error;
         toast.success('已恢复');
         onClose();
         onUpdate();
     } catch (error: any) {
-        toast.error('操作失败: ' + error.message);
+        toast.error('操作失败: ' + (error.message || '未知错误'));
     } finally {
         setIsProcessing(false);
     }
@@ -180,17 +198,20 @@ export function RegistrationDetailModal({
       if (!confirm('警告：此操作不可恢复！确定要永久删除该记录吗？')) return;
       setIsProcessing(true);
       try {
-          const { error } = await supabase
-              .from('registrations')
-              .delete()
-              .eq('id', registration.id);
-          
+          const { error } = await withTimeout(
+              supabase
+                  .from('registrations')
+                  .delete()
+                  .eq('id', registration.id),
+              10000
+          );
+
           if (error) throw error;
           toast.success('已永久删除');
           onClose();
           onUpdate();
       } catch (error: any) {
-          toast.error('删除失败: ' + error.message);
+          toast.error('删除失败: ' + (error.message || '未知错误'));
       } finally {
           setIsProcessing(false);
       }
@@ -236,6 +257,14 @@ export function RegistrationDetailModal({
                   <Input value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} />
               ) : (
                   <div className="font-medium text-lg">{registration.name}</div>
+              )}
+            </div>
+            <div>
+              <Label className="text-gray-500">学号</Label>
+              {isEditing ? (
+                  <Input value={editForm.student_id} onChange={e => setEditForm({...editForm, student_id: e.target.value})} />
+              ) : (
+                  <div className="font-medium">{registration.student_id}</div>
               )}
             </div>
             <div>
