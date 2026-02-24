@@ -1,5 +1,3 @@
-import { PostgrestFilterBuilder } from '@supabase/postgrest-js';
-
 const DEFAULT_TIMEOUT = 10000; // 10 seconds
 
 export class TimeoutError extends Error {
@@ -10,28 +8,18 @@ export class TimeoutError extends Error {
 }
 
 /**
- * Wraps a promise with a timeout
+ * Wraps a promise-like object with a timeout
  */
 export function withTimeout<T>(
-  promise: Promise<T>,
+  promiseLike: PromiseLike<T>,
   timeoutMs: number = DEFAULT_TIMEOUT
 ): Promise<T> {
   return Promise.race([
-    promise,
+    Promise.resolve(promiseLike),
     new Promise<T>((_, reject) =>
       setTimeout(() => reject(new TimeoutError(`Request timed out after ${timeoutMs}ms`)), timeoutMs)
     ),
   ]);
-}
-
-/**
- * Wraps a Supabase query with timeout
- */
-export function withQueryTimeout<T>(
-  queryBuilder: PostgrestFilterBuilder<any, any, T>,
-  timeoutMs: number = DEFAULT_TIMEOUT
-) {
-  return withTimeout(queryBuilder, timeoutMs);
 }
 
 /**
