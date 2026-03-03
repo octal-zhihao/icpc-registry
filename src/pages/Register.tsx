@@ -375,7 +375,7 @@ export function Register() {
                       <span className="text-gray-500 block mb-2">已上传附件</span>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                           {uploadedAttachments.map(file => (
-                              <a 
+                              <a
                                 key={file.id}
                                 href={file.file_url}
                                 target="_blank"
@@ -383,7 +383,20 @@ export function Register() {
                                 className="block border rounded p-2 hover:bg-gray-50 transition-colors text-center"
                               >
                                   <div className="aspect-square bg-gray-200 mb-2 flex items-center justify-center rounded overflow-hidden">
-                                     <img src={file.file_url} alt={file.file_name} className="w-full h-full object-cover" />
+                                     <img
+                                       src={file.file_url}
+                                       alt={file.file_name}
+                                       className="w-full h-full object-cover"
+                                       onError={(e) => {
+                                         const target = e.target as HTMLImageElement;
+                                         console.error('Image load error:', {
+                                           url: file.file_url,
+                                           fileName: file.file_name,
+                                           path: file.file_path
+                                         });
+                                         target.src = 'https://via.placeholder.com/150?text=Load+Error';
+                                       }}
+                                     />
                                   </div>
                                   <div className="text-xs truncate">{file.file_name}</div>
                               </a>

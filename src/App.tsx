@@ -5,6 +5,7 @@ import { Register } from '@/pages/Register';
 import { AdminLogin } from '@/pages/AdminLogin';
 import { AdminDashboard } from '@/pages/AdminDashboard';
 import { EmailTemplates } from '@/pages/EmailTemplates';
+import { StorageDiagnostic } from '@/pages/StorageDiagnostic';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="admin/dashboard" element={<AdminDashboard />} />
           <Route path="admin/email-templates" element={<EmailTemplates />} />
+          <Route path="admin/storage-diagnostic" element={<StorageDiagnostic />} />
         </Route>
       </Route>
     </Routes>

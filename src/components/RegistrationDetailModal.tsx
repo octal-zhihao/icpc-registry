@@ -373,20 +373,26 @@ export function RegistrationDetailModal({
               <Label className="text-gray-500 mb-2 block">附件 ({attachments.length})</Label>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {attachments.map((file) => (
-                  <a 
-                    key={file.id} 
-                    href={file.file_url} 
-                    target="_blank" 
+                  <a
+                    key={file.id}
+                    href={file.file_url}
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="block border rounded-md overflow-hidden hover:shadow-md transition-shadow"
                   >
                     <div className="aspect-square bg-gray-100 flex items-center justify-center relative group">
-                        <img 
-                            src={file.file_url} 
+                        <img
+                            src={file.file_url}
                             alt={file.file_name}
                             className="w-full h-full object-cover"
                             onError={(e) => {
-                                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=Error';
+                                const target = e.target as HTMLImageElement;
+                                console.error('Image load error:', {
+                                    url: file.file_url,
+                                    fileName: file.file_name,
+                                    path: file.file_path
+                                });
+                                target.src = 'https://via.placeholder.com/150?text=Load+Error';
                             }}
                         />
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">

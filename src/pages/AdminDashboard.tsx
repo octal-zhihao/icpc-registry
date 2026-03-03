@@ -362,6 +362,9 @@ export function AdminDashboard() {
             <Link to="/admin/email-templates">
                 <Button variant="outline">邮件模板设置</Button>
             </Link>
+            <Link to="/admin/storage-diagnostic">
+                <Button variant="outline">Storage 诊断</Button>
+            </Link>
             <Button onClick={fetchRegistrations} variant="outline" size="icon" disabled={loading}>
                 <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </Button>
