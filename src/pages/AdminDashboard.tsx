@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { RegistrationDetailModal } from '@/components/RegistrationDetailModal';
-import { Search, Filter, RefreshCcw, Mail, Loader2, Check, AlertTriangle, ChevronLeft, ChevronRight, Users, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Search, Filter, RefreshCcw, Mail, Loader2, Check, AlertTriangle, ChevronLeft, ChevronRight, Users, CheckCircle, XCircle, Clock, Download } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { batchProcess, fetchWithTimeout, withTimeout } from '@/lib/api-helpers';
@@ -105,6 +105,9 @@ export function AdminDashboard() {
   // Email sending state
   const [isSendingEmails, setIsSendingEmails] = useState(false);
   const [emailProgress, setEmailProgress] = useState({ sent: 0, total: 0, failed: 0 });
+
+  // Export state
+  const [isExporting, setIsExporting] = useState(false);
 
   // Abort controller for cancelling requests
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -426,6 +429,84 @@ export function AdminDashboard() {
     }
   };
 
+  const handleExportData = async () => {
+    setIsExporting(true);
+    try {
+      // Fetch ALL registrations (not just current page)
+      const { data: allRegistrations, error } = await withTimeout(
+        supabase
+          .from('registrations')
+          .select('*')
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false }),
+        30000
+      );
+
+      if (error) throw error;
+
+      if (!allRegistrations || allRegistrations.length === 0) {
+        toast.info('没有数据可以导出');
+        return;
+      }
+
+      // Convert to CSV
+      const csvHeaders = [
+        '姓名',
+        '学号',
+        '学院',
+        '专业',
+        '入学年份',
+        '邮箱',
+        'QQ',
+        '简历/竞赛经历',
+        '状态',
+        '邮件发送状态',
+        '提交时间',
+        '更新时间'
+      ];
+
+      const csvRows = allRegistrations.map(reg => [
+        reg.name,
+        reg.student_id,
+        reg.college,
+        reg.major,
+        reg.enrollment_year,
+        reg.email,
+        reg.qq,
+        `"${reg.resume.replace(/"/g, '""')}"`, // Escape quotes in resume
+        reg.status === 'approved' ? '已通过' : reg.status === 'rejected' ? '已拒绝' : '待审核',
+        reg.email_sent_status === 'sent' ? '已发送' : reg.email_sent_status === 'failed' ? '发送失败' : '未发送',
+        new Date(reg.created_at).toLocaleString('zh-CN'),
+        new Date(reg.updated_at).toLocaleString('zh-CN')
+      ]);
+
+      // Add BOM for Excel UTF-8 compatibility
+      const BOM = '\uFEFF';
+      const csvContent = BOM + [
+        csvHeaders.join(','),
+        ...csvRows.map(row => row.join(','))
+      ].join('\n');
+
+      // Create and download file
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `ICPC报名数据_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success(`成功导出 ${allRegistrations.length} 条报名数据`);
+    } catch (error: any) {
+      console.error('Export error:', error);
+      toast.error('导出失败: ' + (error.message || '未知错误'));
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -445,6 +526,18 @@ export function AdminDashboard() {
             <Link to="/admin/storage-diagnostic">
                 <Button variant="outline">Storage 诊断</Button>
             </Link>
+            <Button
+                onClick={handleExportData}
+                variant="outline"
+                disabled={isExporting || loading}
+            >
+                {isExporting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                    <Download className="mr-2 h-4 w-4" />
+                )}
+                {isExporting ? '导出中...' : '导出数据'}
+            </Button>
             <Button onClick={fetchRegistrations} variant="outline" size="icon" disabled={loading}>
                 <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </Button>
