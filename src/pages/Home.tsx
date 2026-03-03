@@ -49,7 +49,10 @@ export function Home() {
               <strong>报名时间：</strong> 即日起至3月12日，滚动审核。
             </li>
             <li>
-              <strong>比赛形式：</strong> 5h线下机房个人赛，通过在线判题系统（OJ）进行。
+              <strong>比赛时间：</strong> 拟定于3月14日下午，具体时间待群通知确认。
+            </li>
+            <li>
+              <strong>比赛形式：</strong> 5h线下机房个人赛，通过在线判题系统（OJ）进行，届时将会和昆工同步进行校赛，共用榜单。
             </li>
             <li>
               <strong>简历可填写内容：</strong>
