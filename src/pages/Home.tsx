@@ -11,7 +11,7 @@ export function Home() {
           云南大学 ICPC 校内选拔赛
         </h1>
         <p className="text-lg leading-8 text-gray-600">
-          展现你的算法实力，争夺校队名额，开启你的竞赛之旅。
+          展现你的算法实力，争夺ICPC名额，开启你的竞赛之旅。
         </p>
         <div className="flex items-center justify-center gap-x-6">
           <Link to="/register">
@@ -43,20 +43,22 @@ export function Home() {
               </ul>
             </li>
             <li>
-              <strong>报名时间：</strong> 请关注官方群通知。
+              <strong>比赛名额：</strong> 具体消息关注群通知，由于线下机房机位有限，预计不会超过80人。
             </li>
             <li>
-              <strong>比赛形式：</strong> 个人赛，通过在线判题系统（OJ）进行。
+              <strong>报名时间：</strong> 即日起至3月12日，滚动审核。
             </li>
             <li>
-              <strong>简历填写要求：</strong>
+              <strong>比赛形式：</strong> 5h线下机房个人赛，通过在线判题系统（OJ）进行。
+            </li>
+            <li>
+              <strong>简历可填写内容：</strong>
               <ul className="list-circle pl-5 mt-1 space-y-1">
                 <li>
-                  <strong>平台数据：</strong> 可填写 Codeforces、AtCoder、牛客、洛谷四个平台的 Rating 或刷题量（需附上用户名）。
-                  <span className="text-gray-500 text-sm">（注：集训队正式队员及预备队员无需填写此项，仅认可以上四个平台）</span>
+                  <strong>平台数据：</strong> 可填写 Codeforces、AtCoder、牛客、洛谷四个平台的 Rating 或刷题量（仅认可以上四个平台，需附上用户名）。
                 </li>
                 <li>
-                  <strong>获奖经历：</strong> 我们认可的算法比赛经历包括：百度之星、码蹄杯程序设计大赛、蓝桥杯、天梯赛个人奖项、以往由我校 ICPC 集训队举办的比赛、CSP 认证（200分以上）等。
+                  <strong>获奖经历：</strong> 我们认可的算法比赛经历包括：百度之星、码蹄杯程序设计大赛、蓝桥杯、天梯赛、以往由我校 ICPC 集训队举办的比赛、CSP认证成绩及CCF举办的算法竞赛等。
                 </li>
               </ul>
             </li>
@@ -67,7 +69,7 @@ export function Home() {
                 <ul className="list-disc pl-4 space-y-1">
                   <li>请真心想参加比赛的同学认真填写报名表。</li>
                   <li>我们将偏向于录取年轻选手。</li>
-                  <li>没有太多比赛经历的低年级同学，请在简历中着重体现自己的各平台刷题量。</li>
+                  <li>没有太多比赛经历的低年级同学，请在简历中着重体现自己的各平台刷题量或算法学习情况，<strong>获奖经历并非必要条件</strong>。</li>
                 </ul>
               </div>
             </li>

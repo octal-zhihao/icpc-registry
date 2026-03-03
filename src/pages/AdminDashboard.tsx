@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Registration, Attachment } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,75 @@ import { toast } from 'sonner';
 import { batchProcess, fetchWithTimeout, withTimeout } from '@/lib/api-helpers';
 
 const PAGE_SIZE = 20;
+const STATS_CACHE_DURATION = 30000; // 30 seconds cache duration
+
+// Module-level cache for stats
+let statsCacheTimestamp = 0;
+
+// Memoized table row component for better performance
+const RegistrationRow = memo(({
+  reg,
+  isSelected,
+  onToggleSelect,
+  onViewDetails
+}: {
+  reg: Registration;
+  isSelected: boolean;
+  onToggleSelect: (id: string) => void;
+  onViewDetails: (reg: Registration) => void;
+}) => {
+  return (
+    <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+      <td className="p-4 w-10 text-center align-middle">
+        <input
+          type="checkbox"
+          className="rounded border-gray-300"
+          checked={isSelected}
+          onChange={() => onToggleSelect(reg.id)}
+        />
+      </td>
+      <td className="p-4 align-middle font-medium">{reg.name}</td>
+      <td className="p-4 align-middle text-gray-600">{reg.student_id}</td>
+      <td className="p-4 align-middle">
+        <div>{reg.college}</div>
+        <div className="text-xs text-gray-500">{reg.major}</div>
+      </td>
+      <td className="p-4 align-middle">{reg.enrollment_year}</td>
+      <td className="p-4 align-middle">
+        <div>{reg.email}</div>
+        <div className="text-xs text-gray-500">QQ: {reg.qq}</div>
+      </td>
+      <td className="p-4 align-middle">
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+          reg.status === 'approved' ? 'bg-green-100 text-green-800' :
+          reg.status === 'rejected' ? 'bg-red-100 text-red-800' :
+          'bg-yellow-100 text-yellow-800'
+        }`}>
+          {reg.status === 'approved' ? '已通过' :
+           reg.status === 'rejected' ? '已拒绝' : '待审核'}
+        </span>
+      </td>
+      <td className="p-4 align-middle">
+        {reg.email_sent_status === 'sent' ? (
+          <span className="text-green-600 text-xs flex items-center">
+            <Check className="w-3 h-3 mr-1" /> 已发送
+          </span>
+        ) : reg.email_sent_status === 'failed' ? (
+          <span className="text-red-600 text-xs flex items-center">
+            <AlertTriangle className="w-3 h-3 mr-1" /> 发送失败
+          </span>
+        ) : (
+          <span className="text-gray-400 text-xs">未发送</span>
+        )}
+      </td>
+      <td className="p-4 align-middle">
+        <Button variant="outline" size="sm" onClick={() => onViewDetails(reg)}>
+          查看详情
+        </Button>
+      </td>
+    </tr>
+  );
+});
 
 export function AdminDashboard() {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
@@ -58,20 +127,30 @@ export function AdminDashboard() {
     setSelectedIds([]); // Clear selection on filter change
   }, [statusFilter]);
 
-  const fetchStats = useCallback(async () => {
+  const fetchStats = useCallback(async (force = false) => {
+      // Use cache if not forced and cache is still valid
+      const now = Date.now();
+      if (!force && now - statsCacheTimestamp < STATS_CACHE_DURATION) {
+          return;
+      }
+
       try {
           const { data, error } = await withTimeout(
-              supabase.from('registrations').select('status, deleted_at'),
+              supabase.rpc('get_registration_stats'),
               10000
           );
-          if (!error && data) {
-              const active = data.filter(r => !r.deleted_at);
+
+          if (error) throw error;
+
+          if (data && data.length > 0) {
+              const stats = data[0];
               setStats({
-                  total: active.length,
-                  pending: active.filter(r => r.status === 'pending').length,
-                  approved: active.filter(r => r.status === 'approved').length,
-                  rejected: active.filter(r => r.status === 'rejected').length,
+                  total: Number(stats.total) || 0,
+                  pending: Number(stats.pending) || 0,
+                  approved: Number(stats.approved) || 0,
+                  rejected: Number(stats.rejected) || 0,
               });
+              statsCacheTimestamp = now;
           }
       } catch (error) {
           console.error('Error fetching stats:', error);
@@ -193,7 +272,7 @@ export function AdminDashboard() {
           toast.success('批量操作成功');
           setSelectedIds([]);
           fetchRegistrations();
-          fetchStats(); // Update stats after batch operation
+          fetchStats(true); // Force refresh stats after batch operation
       } catch (error: any) {
           toast.error('批量操作失败: ' + (error.message || '未知错误'));
       } finally {
@@ -337,6 +416,7 @@ export function AdminDashboard() {
         }
 
         fetchRegistrations();
+        fetchStats(true); // Force refresh stats after email sending
 
     } catch (error: any) {
         console.error('Batch send error:', error);
@@ -480,55 +560,13 @@ export function AdminDashboard() {
                     </tr>
                   ) : (
                     registrations.map((reg) => (
-                      <tr key={reg.id} className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
-                        <td className="p-4 w-10 text-center align-middle">
-                            <input 
-                                type="checkbox" 
-                                className="rounded border-gray-300"
-                                checked={selectedIds.includes(reg.id)}
-                                onChange={() => toggleSelect(reg.id)}
-                            />
-                        </td>
-                        <td className="p-4 align-middle font-medium">{reg.name}</td>
-                        <td className="p-4 align-middle text-gray-600">{reg.student_id}</td>
-                        <td className="p-4 align-middle">
-                          <div>{reg.college}</div>
-                          <div className="text-xs text-gray-500">{reg.major}</div>
-                        </td>
-                        <td className="p-4 align-middle">{reg.enrollment_year}</td>
-                        <td className="p-4 align-middle">
-                          <div>{reg.email}</div>
-                          <div className="text-xs text-gray-500">QQ: {reg.qq}</div>
-                        </td>
-                        <td className="p-4 align-middle">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            reg.status === 'approved' ? 'bg-green-100 text-green-800' :
-                            reg.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                            'bg-yellow-100 text-yellow-800'
-                          }`}>
-                            {reg.status === 'approved' ? '已通过' :
-                             reg.status === 'rejected' ? '已拒绝' : '待审核'}
-                          </span>
-                        </td>
-                        <td className="p-4 align-middle">
-                            {reg.email_sent_status === 'sent' ? (
-                                <span className="text-green-600 text-xs flex items-center">
-                                    <Check className="w-3 h-3 mr-1" /> 已发送
-                                </span>
-                            ) : reg.email_sent_status === 'failed' ? (
-                                <span className="text-red-600 text-xs flex items-center">
-                                    <AlertTriangle className="w-3 h-3 mr-1" /> 发送失败
-                                </span>
-                            ) : (
-                                <span className="text-gray-400 text-xs">未发送</span>
-                            )}
-                        </td>
-                        <td className="p-4 align-middle">
-                          <Button variant="outline" size="sm" onClick={() => handleViewDetails(reg)}>
-                            查看详情
-                          </Button>
-                        </td>
-                      </tr>
+                      <RegistrationRow
+                        key={reg.id}
+                        reg={reg}
+                        isSelected={selectedIds.includes(reg.id)}
+                        onToggleSelect={toggleSelect}
+                        onViewDetails={handleViewDetails}
+                      />
                     ))
                   )}
                 </tbody>

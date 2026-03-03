@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { Loader2, Upload, X, LogIn, FileText } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { Registration, Attachment } from '@/types';
-import { withTimeout } from '@/lib/api-helpers';
+import { withTimeout, batchProcess } from '@/lib/api-helpers';
 
 const formSchema = z.object({
   name: z.string().min(2, '姓名至少2个字符'),
@@ -32,6 +32,7 @@ type FormValues = z.infer<typeof formSchema>;
 export function Register() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const { user, loading: authLoading } = useAuthStore();
   
@@ -122,20 +123,31 @@ export function Register() {
     }
   };
 
+  // Cleanup preview URLs on unmount
+  useEffect(() => {
+    return () => {
+      previewUrls.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [previewUrls]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
       const validFiles = newFiles.filter(file => file.type.startsWith('image/'));
-      
+
       if (validFiles.length !== newFiles.length) {
         toast.error('仅支持上传图片文件');
       }
-      
+
+      const newPreviewUrls = validFiles.map(file => URL.createObjectURL(file));
+      setPreviewUrls(prev => [...prev, ...newPreviewUrls]);
       setFiles(prev => [...prev, ...validFiles]);
     }
   };
 
   const removeFile = (index: number) => {
+    URL.revokeObjectURL(previewUrls[index]);
+    setPreviewUrls(prev => prev.filter((_, i) => i !== index));
     setFiles(prev => prev.filter((_, i) => i !== index));
   };
 
@@ -170,14 +182,12 @@ export function Register() {
 
       if (regError) throw regError;
 
-      // 2. Upload files if any
+      // 2. Upload files in parallel if any
       const uploadedAttachments: Attachment[] = [];
       if (files.length > 0 && registration) {
-        let successCount = 0;
-        let failCount = 0;
-
-        for (const file of files) {
-          try {
+        const { results, errors } = await batchProcess(
+          files,
+          async (file) => {
             const fileExt = file.name.split('.').pop();
             const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
             const filePath = `${registration.id}/${fileName}`;
@@ -206,19 +216,22 @@ export function Register() {
             );
 
             if (attachmentError) throw attachmentError;
-
-            if (attachmentData) {
-              uploadedAttachments.push(attachmentData as Attachment);
+            return attachmentData as Attachment;
+          },
+          {
+            concurrency: 3, // Upload 3 files at a time
+            onProgress: (completed, total, failed) => {
+              console.log(`Upload progress: ${completed}/${total}, Failed: ${failed}`);
             }
-            successCount++;
-          } catch (error) {
-            console.error(`Failed to upload ${file.name}:`, error);
-            failCount++;
           }
-        }
+        );
 
-        if (failCount > 0) {
-          toast.warning(`报名已提交，但 ${failCount} 个附件上传失败`);
+        // Collect successful uploads
+        uploadedAttachments.push(...results.filter((r): r is Attachment => r !== null));
+
+        if (errors.length > 0) {
+          console.error('Upload errors:', errors);
+          toast.warning(`报名已提交，但 ${errors.length} 个附件上传失败`);
         }
       }
 
@@ -228,6 +241,9 @@ export function Register() {
       setUploadedAttachments(uploadedAttachments);
       toast.success('报名提交成功！');
       reset();
+      // Clean up preview URLs before clearing files
+      previewUrls.forEach(url => URL.revokeObjectURL(url));
+      setPreviewUrls([]);
       setFiles([]);
     } catch (error: any) {
       console.error('Submission error:', error);
@@ -505,9 +521,9 @@ export function Register() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                   {files.map((file, index) => (
                     <div key={index} className="relative group border rounded-md overflow-hidden aspect-square">
-                      <img 
-                        src={URL.createObjectURL(file)} 
-                        alt={`preview-${index}`} 
+                      <img
+                        src={previewUrls[index]}
+                        alt={`preview-${index}`}
                         className="w-full h-full object-cover"
                       />
                       <button
