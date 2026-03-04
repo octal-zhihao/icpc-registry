@@ -11,7 +11,7 @@ interface AuthState {
   signOut: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => {
+export const useAuthStore = create<AuthState>((set, get) => {
   let unsubscribe: (() => void) | null = null;
 
   return {
@@ -49,26 +49,39 @@ export const useAuthStore = create<AuthState>((set) => {
         if (!unsubscribe) {
           const { data: authListener } = supabase.auth.onAuthStateChange(
             async (_event, session) => {
-              const user = session?.user ?? null;
-              let isAdmin = false;
+              const newUser = session?.user ?? null;
+              const currentState = get();
 
-              if (user) {
+              // If user hasn't changed, keep current isAdmin while checking
+              const userChanged = currentState.user?.id !== newUser?.id;
+
+              // Start with current isAdmin if user hasn't changed (prevents flicker)
+              let isAdmin = userChanged ? false : currentState.isAdmin;
+
+              if (newUser) {
                 try {
                   const { data } = await withTimeout(
                     supabase
                       .from('admin_users')
                       .select('id')
-                      .eq('id', user.id)
+                      .eq('id', newUser.id)
                       .maybeSingle(),
                     10000
                   );
-                  if (data) isAdmin = true;
+                  isAdmin = !!data;
                 } catch (error) {
                   console.error('Error checking admin status:', error);
+                  // On error, keep current status if user hasn't changed
+                  if (!userChanged) {
+                    isAdmin = currentState.isAdmin;
+                  }
                 }
+              } else {
+                // User logged out, reset admin status
+                isAdmin = false;
               }
 
-              set({ user, isAdmin });
+              set({ user: newUser, isAdmin });
             }
           );
           unsubscribe = authListener.subscription.unsubscribe;
