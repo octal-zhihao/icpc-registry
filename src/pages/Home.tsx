@@ -68,16 +68,39 @@ export function Home() {
               <strong>比赛形式：</strong> 5h线下机房个人赛，通过在线判题系统（OJ）进行，届时将会和昆工同步进行校赛，共用榜单。
               <ul className="list-disc pl-5 mt-1 space-y-1">
                 <li>比赛平台：<strong>Hydro OJ</strong>（https://hydro.ac/）。</li>
+                <li>
+                  <strong>比赛赛制：</strong>
+                  <ul className="list-disc pl-5 mt-1 space-y-1">
+                    <li>
+                      本次比赛采用 <strong>ICPC 赛制</strong>。
+                    </li>
+                    <li>
+                      具体规则可参考：
+                      <a
+                        href="https://oi-wiki.org/contest/icpc/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 underline ml-1"
+                      >
+                        https://oi-wiki.org/contest/icpc/
+                      </a>
+                    </li>
+                    <li>
+                      本次比赛将与 ICPC 系列正式比赛保持一致，在 <strong>比赛开始 4 小时后进行封榜</strong>。
+                    </li>
+                  </ul>
+                </li>
                 <li>比赛环境为<strong>机房内网环境</strong>，将<strong>断绝外网</strong>。</li>
                 <li>比赛过程中<strong>不允许查看任何电子资料</strong>（包括网页、电子笔记等）。</li>
                 <li>选手<strong>可以携带纸质资料</strong>（如打印模板、算法笔记等）。</li>
+                <li>选手<strong>在正式赛开赛两小时后，即15点后才可离场，离场后不得有任何提交记录，否则取消比赛成绩。</strong></li>
               </ul>
             </li>
 
             <li>
               <strong>参赛奖励：</strong>
               <ul className="list-disc pl-5 mt-1 space-y-1">
-                <li>比赛按照 <strong>5% / 10% / 20%</strong> 的比例发放金、银、铜奖。</li>
+                <li>比赛按照 <strong>5% / 10% / 25%</strong> 的比例发放金、银、铜奖。</li>
                 <li>人数基数以实际到场签到人数为准，按获奖比例计算的获奖人数统一向上取整。</li>
                 <li>
                   <strong>所有参赛选手均可获得官方活动证明，获奖选手还将额外获得获奖证书与奖品。</strong>
