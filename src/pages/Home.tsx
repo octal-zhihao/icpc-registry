@@ -82,7 +82,7 @@ export function Home() {
                         rel="noopener noreferrer"
                         className="text-blue-600 underline ml-1"
                       >
-                        https://oi-wiki.org/contest/icpc/
+                        https://blog.pintia.cn/2018/08/01/acm-icpc-scoring-rule/
                       </a>
                     </li>
                     <li>
