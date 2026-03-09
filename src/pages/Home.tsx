@@ -77,7 +77,7 @@ export function Home() {
                     <li>
                       具体规则可参考：
                       <a
-                        href="https://oi-wiki.org/contest/icpc/"
+                        href="https://blog.pintia.cn/2018/08/01/acm-icpc-scoring-rule/"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-600 underline ml-1"
