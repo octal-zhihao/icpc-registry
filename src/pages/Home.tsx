@@ -86,7 +86,7 @@ export function Home() {
                       </a>
                     </li>
                     <li>
-                      本次比赛将与 ICPC 系列正式比赛保持一致，在 <strong>比赛开始 4 小时后进行封榜</strong>。
+                      本次比赛将与 ICPC 系列正式比赛保持一致，在 <strong>比赛开始 4 小时后进行封榜，赛后进行滚榜</strong>。
                     </li>
                   </ul>
                 </li>
