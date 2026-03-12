@@ -49,7 +49,7 @@ export function Home() {
             </li>
 
             <li>
-              <strong>报名时间：</strong> 即日起至3月12日24:00，滚动审核。
+              <strong>报名时间：</strong> 即日起至3月13日19:00，滚动审核。
             </li>
 
             <li>
